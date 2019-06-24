@@ -213,7 +213,7 @@ class TFDeepExplainer(Explainer):
                         reg[n]["type"] = self.orig_grads[n]
         return self.phi_symbolics[i]
 
-    def shap_values(self, X, ranked_outputs=None, output_rank_order="max"):
+    def shap_values(self, X, ranked_outputs=None, output_rank_order="max", model_adapter=None):
 
         # check if we have multiple inputs
         if not self.multi_input:
@@ -242,6 +242,9 @@ class TFDeepExplainer(Explainer):
 
         # compute the attributions
         output_phis = []
+        if model_adapter is not None:
+            X = [model_adapter.reshape_data(f) for f in X]
+            self.data = model_adapter.reshape_data(self.data)
         for i in range(model_output_ranks.shape[1]):
             phis = []
             for k in range(len(X)):
@@ -262,6 +265,7 @@ class TFDeepExplainer(Explainer):
                 sample_phis = self.run(self.phi_symbolic(feature_ind), self.model_inputs, joint_input)
 
                 # assign the attributions to the right part of the output arrays
+
                 for l in range(len(X)):
                     phis[l][j] = (sample_phis[l][bg_data[l].shape[0]:] * (X[l][j] - bg_data[l])).mean(0)
 
@@ -273,13 +277,22 @@ class TFDeepExplainer(Explainer):
         else:
             return output_phis
 
-    def run(self, out, model_inputs, X):
+    def run(self, out, model_inputs, X, model_adapter = None):
         """ Runs the model while also setting the learning phase flags to False.
         """
         feed_dict = dict(zip(model_inputs, X))
         for t in self.learning_phase_flags:
             feed_dict[t] = False
-        return self.session.run(out, feed_dict)
+
+        if model_adapter is None:
+            return self.session.run(out, feed_dict)
+
+        shap_input_tensors = model_adapter.get_shap_input_tensors()
+        shap_input_data = self.session.run(shap_input_tensors, feed_dict)
+        feed_dict = { x[0] : x[1] for x in zip(shap_input_tensors, shap_input_data) }
+        res = self.session.run(out, feed_dict)
+        return model_adapter.reshape_data(res)
+
 
     def custom_grad(self, op, *grads):
         """ Passes a gradient op creation request to the correct handler.
