@@ -77,13 +77,13 @@ class DeepExplainer(Explainer):
                 framework = 'tensorflow'
 
         if framework == 'tensorflow':
-            self.explainer = TFDeepExplainer(model, data, session, learning_phase_flags, additional_feed_tensors=additional_feed_tensors, additional_feed_data=additional_feed_data)
+            self.explainer = TFDeepExplainer(model, data, session, learning_phase_flags, additional_feed_tensors, additional_feed_data)
         elif framework == 'pytorch':
             self.explainer = PyTorchDeepExplainer(model, data)
 
         self.expected_value = self.explainer.expected_value
 
-    def shap_values(self, X, ranked_outputs=None, output_rank_order='max'):
+    def shap_values(self, X, ranked_outputs=None, output_rank_order='max', additional_feed_tensors=None, additional_feed_data=None):
         """ Return approximate SHAP values for the model applied to the data given by X.
 
         Parameters
@@ -116,4 +116,4 @@ class DeepExplainer(Explainer):
         ranked_outputs, and indexes is a matrix that indicates for each sample which output indexes
         were chosen as "top".
         """
-        return self.explainer.shap_values(X, ranked_outputs, output_rank_order)
+        return self.explainer.shap_values(X, ranked_outputs, output_rank_order, additional_feed_tensors, additional_feed_data)

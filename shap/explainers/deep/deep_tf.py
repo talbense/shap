@@ -499,9 +499,8 @@ def nonlinearity_2d_handler(input_ind0, input_ind1, op_func, explainer, op, *gra
         out0 = tf.reduce_sum(out0, axis=broadcast_index, keepdims=keepd)
 
     # Avoid divide by zero nans
-    try:
-        out0 = tf.where(tf.abs(tf.tile(delta_in0, get_dup_shape(delta_in0))) < 1e-7, tf.zeros_like(out0), out0)
-        out1 = tf.where(tf.abs(tf.tile(delta_in1, get_dup_shape(delta_in1))) < 1e-7, tf.zeros_like(out1), out1)
+    out0 = tf.where(tf.abs(tf.tile(delta_in0, get_dup_shape(delta_in0))) < 1e-7, tf.zeros_like(out0), out0)
+    out1 = tf.where(tf.abs(tf.tile(delta_in1, get_dup_shape(delta_in1))) < 1e-7, tf.zeros_like(out1), out1)
 
     return [out0, out1]
 
