@@ -78,7 +78,8 @@ def run_setup(with_binary=True, test_xgboost=True, test_lightgbm=True):
                          "several previous methods and representing the only possible consistent and locally accurate " + \
                          "additive feature attribution method based on expectations.",
         long_description_content_type="text/markdown",
-        url='http://github.com/slundberg/shap',
+        # url='http://github.com/slundberg/shap',
+        url='https://github.com/talbense/shap',
         author='Scott Lundberg',
         author_email='slund1@cs.washington.edu',
         license='MIT',
