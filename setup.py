@@ -87,6 +87,9 @@ def run_setup(with_binary=True, test_xgboost=True, test_lightgbm=True):
             'shap', 'shap.explainers', 'shap.explainers.other', 'shap.explainers.deep',
             'shap.plots', 'shap.benchmark'
         ],
+        dependency_links=[
+            'https://github.com/talbense/shap'
+        ],
         package_data={'shap': ['plots/resources/*', 'tree_shap.h']},
         cmdclass={'build_ext': build_ext},
         setup_requires=['numpy'],
