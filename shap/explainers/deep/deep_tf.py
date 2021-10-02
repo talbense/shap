@@ -2,6 +2,7 @@ import numpy as np
 import warnings
 from shap.explainers.explainer import Explainer
 from distutils.version import LooseVersion
+
 keras = None
 tf = None
 tf_ops = None
@@ -100,11 +101,11 @@ class TFDeepExplainer(Explainer):
             self.multi_input = False
             if type(self.model_inputs) != list:
                 self.model_inputs = [self.model_inputs]
-        if type(data) != list and (hasattr(data, '__call__')==False):
+        if type(data) != list and (hasattr(data, '__call__') == False):
             data = [data]
         self.data = data
 
-        self._vinputs = {} # used to track what op inputs depends on the model inputs
+        self._vinputs = {}  # used to track what op inputs depends on the model inputs
         self.orig_grads = {}
 
         # if we are not given a session find a default session
@@ -139,7 +140,7 @@ class TFDeepExplainer(Explainer):
             self.expected_value = 0 #self.run(self.model_output, self.model_inputs, self.data, additional_feed_tensors, additional_feed_data).mean(0)
 
         # find all the operations in the graph between our inputs and outputs
-        tensor_blacklist = tensors_blocked_by_false(self.learning_phase_ops) # don't follow learning phase branches
+        tensor_blacklist = tensors_blocked_by_false(self.learning_phase_ops)  # don't follow learning phase branches
         dependence_breakers = [k for k in op_handlers if op_handlers[k] == break_dependence]
         back_ops = backward_walk_ops(
             [self.model_output.op], tensor_blacklist,
@@ -155,6 +156,17 @@ class TFDeepExplainer(Explainer):
         self.used_types = {}
         for op in self.between_ops:
             self.used_types[op.type] = True
+
+        # find embedding factories which we can't derive
+        model_inputs = model[0]
+        switch_embeddings = []
+        for inp in model_inputs:
+            traceback = inp.op.traceback
+            for stacktrace in traceback:
+                if 'switch_embedding.py' in stacktrace[0]:
+                    inp_name = inp.op.name.split('/')[0]
+                    switch_embeddings.append(inp_name)
+        self.switch_embeddings = list(set(switch_embeddings))
 
         # make a blank array that will get lazily filled in with the SHAP value computation
         # graphs for each output. Lazy is important since if there are 1000 outputs and we
@@ -237,7 +249,7 @@ class TFDeepExplainer(Explainer):
                 model_output_ranks = np.argsort(np.abs(model_output_values))
             else:
                 assert False, "output_rank_order must be max, min, or max_abs!"
-            model_output_ranks = model_output_ranks[:,:ranked_outputs]
+            model_output_ranks = model_output_ranks[:, :ranked_outputs]
         else:
             model_output_ranks = np.tile(np.arange(len(self.phi_symbolics)), (X[0].shape[0], 1))
 
@@ -264,9 +276,7 @@ class TFDeepExplainer(Explainer):
                 sample_phis = self.run(self.phi_symbolic(feature_ind), self.model_inputs, joint_input, additional_feed_tensors=additional_feed_tensors, additional_feed_data=additional_feed_data)
 
                 # assign the attributions to the right part of the output arrays
-                for l in range(len(X)):
-                    if l in non_shap_inputs_indexes:
-                        continue
+                for l in range(len(X) - 1):
                     phis[l][j] = (sample_phis[l][bg_data[l].shape[0]:] * (X[l][j] - bg_data[l])).mean(0)
 
             output_phis.append(phis[0] if not self.multi_input else phis)
@@ -287,20 +297,26 @@ class TFDeepExplainer(Explainer):
 
         for t in self.learning_phase_flags:
             feed_dict[t] = False
-        # remove uninformative input features
-        outs = []
-        for i, o in enumerate(out):
+        # remove uninformative input features - non-derivative feature inputs (including switch)
+        true_out = []
+        chunk_size = X[0].shape[0]
+        for o in out:
             if o.op.type == 'ZerosLike':
                 warnings.warn('Failed to derive {} gradient (uninformative input feature)'.format(o.op.node_def.input))
-                non_shap_inputs_indexes.append(i)
+            elif is_switch_tensor(o, self.switch_embeddings):
+                true_out.append(tf.zeros((chunk_size, o.get_shape()[-1])))
             else:
-                outs.append(o)
-        return self.session.run(outs, feed_dict)
+                true_out.append(o)
+        return self.session.run(true_out, feed_dict)
 
     def custom_grad(self, op, *grads):
         """ Passes a gradient op creation request to the correct handler.
         """
         return op_handlers[op.type](self, op, *grads)
+
+
+def is_switch_tensor(tensor, switch_embeddings):
+    return any(s_embedd in tensor.op.name for s_embedd in switch_embeddings)
 
 
 def tensors_blocked_by_false(ops):
@@ -310,9 +326,10 @@ def tensors_blocked_by_false(ops):
     phase (like dropout, batch norm, etc.).
     """
     blocked = []
+
     def recurse(op):
         if op.type == "Switch":
-            blocked.append(op.outputs[1]) # the true path is blocked since we assume the ops we trace are False
+            blocked.append(op.outputs[1])  # the true path is blocked since we assume the ops we trace are False
         else:
             for out in op.outputs:
                 for c in out.consumers():
@@ -335,6 +352,7 @@ def backward_walk_ops(start_ops, tensor_blacklist, op_type_blacklist):
                     op_stack.append(input.op)
     return found_ops
 
+
 def forward_walk_ops(start_ops, tensor_blacklist, op_type_blacklist, within_ops):
     found_ops = []
     op_stack = [op for op in start_ops]
@@ -351,8 +369,8 @@ def forward_walk_ops(start_ops, tensor_blacklist, op_type_blacklist, within_ops)
 
 def split_tensor(t):
     if len(t.shape) == 3:
-        return tf.split(t,2,axis=1)
-    return tf.split(t,2)
+        return tf.split(t, 2, axis=1)
+    return tf.split(t, 2)
 
 
 def get_dup_shape(t):
@@ -381,8 +399,8 @@ def softmax(explainer, op, *grads):
     del explainer.between_ops[-4:]
 
     # rescale to account for our shift by in0_max (which we did for numerical stability)
-    xin0,rin0 = split_tensor(in0)
-    xin0_centered,rin0_centered = split_tensor(in0_centered)
+    xin0, rin0 = split_tensor(in0)
+    xin0_centered, rin0_centered = split_tensor(in0_centered)
     delta_in0 = xin0 - rin0
     dup0 = get_dup_shape(delta_in0)
     return tf.where(
@@ -393,13 +411,13 @@ def softmax(explainer, op, *grads):
 
 
 def maxpool(explainer, op, *grads):
-    xin0,rin0 = split_tensor(op.inputs[0])
-    xout,rout = split_tensor(op.outputs[0])
+    xin0, rin0 = split_tensor(op.inputs[0])
+    xout, rout = split_tensor(op.outputs[0])
     delta_in0 = xin0 - rin0
     dup0 = get_dup_shape(delta_in0)
     cross_max = tf.maximum(xout, rout)
     diffs = tf.concat([cross_max - rout, xout - cross_max], 0)
-    xmax_pos,rmax_pos = split_tensor(explainer.orig_grads[op.type](op, grads[0] * diffs))
+    xmax_pos, rmax_pos = split_tensor(explainer.orig_grads[op.type](op, grads[0] * diffs))
     return tf.tile(tf.where(
         tf.abs(delta_in0) < 1e-7,
         tf.zeros_like(delta_in0),
@@ -569,8 +587,6 @@ def break_dependence(explainer, op, *grads):
     return [None for _ in op.inputs]
 
 
-non_shap_inputs_indexes = []
-
 op_handlers = {}
 
 # ops that are always linear
@@ -639,8 +655,10 @@ op_handlers["GatherV2"] = gather
 op_handlers["MaxPool"] = maxpool
 op_handlers["Softmax"] = softmax
 
+
 # TODO items
 # TensorArrayGatherV3
 # Max
 # TensorArraySizeV3
 # Range
+
