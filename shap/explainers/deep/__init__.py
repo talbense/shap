@@ -15,7 +15,7 @@ class DeepExplainer(Explainer):
     current model output (f(x) - E[f(x)]).
     """
 
-    def __init__(self, model, data, session=None, learning_phase_flags=None):
+    def __init__(self, model, data, session=None, learning_phase_flags=None, additional_feed_tensors=None, additional_feed_data=None):
         """ An explainer object for a differentiable model using a given background dataset.
 
         Note that the complexity of the method scales linearly with the number of background data
@@ -26,10 +26,10 @@ class DeepExplainer(Explainer):
 
         Parameters
         ----------
-        model : if framework == 'tensorflow', (input : [tf.Tensor], output : tf.Tensor)
-             A pair of TensorFlow tensors (or a list and a tensor) that specifies the input and
+        model : if framework == 'tensorflow', (input : [tf.Operation], output : tf.Operation)
+             A pair of TensorFlow operations (or a list and an op) that specifies the input and
             output of the model to be explained. Note that SHAP values are specific to a single
-            output value, so the output tf.Tensor should be a single dimensional output (,1).
+            output value, so the output tf.Operation should be a single dimensional output (,1).
 
             if framework == 'pytorch', an nn.Module object (model), or a tuple (model, layer),
                 where both are nn.Module objects
@@ -42,7 +42,7 @@ class DeepExplainer(Explainer):
             if framework == 'tensorflow': [numpy.array] or [pandas.DataFrame]
             if framework == 'pytorch': [torch.tensor]
             The background dataset to use for integrating out features. DeepExplainer integrates
-            over these samples. The data passed here must match the input tensors given in the
+            over these samples. The data passed here must match the input operations given in the
             first argument. Note that since these samples are integrated over for each sample you
             should only something like 100 or 1000 random background samples, not the whole training
             dataset.
@@ -77,13 +77,13 @@ class DeepExplainer(Explainer):
                 framework = 'tensorflow'
 
         if framework == 'tensorflow':
-            self.explainer = TFDeepExplainer(model, data, session, learning_phase_flags)
+            self.explainer = TFDeepExplainer(model, data, session, learning_phase_flags, additional_feed_tensors, additional_feed_data)
         elif framework == 'pytorch':
             self.explainer = PyTorchDeepExplainer(model, data)
 
         self.expected_value = self.explainer.expected_value
 
-    def shap_values(self, X, ranked_outputs=None, output_rank_order='max'):
+    def shap_values(self, X, ranked_outputs=None, output_rank_order='max', additional_feed_tensors=None, additional_feed_data=None):
         """ Return approximate SHAP values for the model applied to the data given by X.
 
         Parameters
@@ -116,4 +116,4 @@ class DeepExplainer(Explainer):
         ranked_outputs, and indexes is a matrix that indicates for each sample which output indexes
         were chosen as "top".
         """
-        return self.explainer.shap_values(X, ranked_outputs, output_rank_order)
+        return self.explainer.shap_values(X, ranked_outputs, output_rank_order, additional_feed_tensors, additional_feed_data)
